@@ -1,0 +1,33 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Policy tests
+        run: python -m unittest -v test_policy
+      - name: Build every stage
+        run: |
+          for stage in 1 2 3; do
+            python build_shortcut.py --stage "$stage" --output "build/stage$stage"
+          done
+      - name: Built shortcuts never contain an API key
+        run: |
+          python - <<'EOF'
+          import pathlib, plistlib
+          for path in pathlib.Path("build").rglob("*.shortcut"):
+              workflow = plistlib.loads(path.read_bytes())
+              for action in workflow["WFWorkflowActions"]:
+                  params = action["WFWorkflowActionParameters"]
+                  if params.get("CustomOutputName") == "OpenRouter API key":
+                      assert params["WFTextActionText"] == "", path
+              print(path, "ok")
+          EOF
